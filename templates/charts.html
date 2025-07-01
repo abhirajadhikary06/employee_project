@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Employee Analytics</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.5/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <h1>Employee Analytics</h1>
+    <canvas id="deptChart" width="400" height="200"></canvas>
+    <canvas id="attendanceChart" width="400" height="200"></canvas>
+
+    <script>
+        // Fetch data for charts
+        async function fetchData() {
+            const deptResponse = await fetch('/api/employees/', {
+                headers: {
+                    'Authorization': 'Bearer ' + localStorage.getItem('access_token')
+                }
+            });
+            const deptData = await deptResponse.json();
+            const attendanceResponse = await fetch('/api/attendance/', {
+                headers: {
+                    'Authorization': 'Bearer ' + localStorage.getItem('access_token')
+                }
+            });
+            const attendanceData = await attendanceResponse.json();
+            return { deptData, attendanceData };
+        }
+
+        // Process data for charts
+        function processData(deptData, attendanceData) {
+            const deptCounts = {};
+            deptData.results.forEach(emp => {
+                const dept = emp.department.name;
+                deptCounts[dept] = (deptCounts[dept] || 0) + 1;
+            });
+
+            const months = Array(12).fill().map((_, i) => {
+                const d = new Date();
+                d.setMonth(d.getMonth() - i);
+                return d.toLocaleString('default', { month: 'short', year: 'numeric' });
+            }).reverse();
+
+            const attendanceCounts = { PRESENT: Array(12).fill(0), ABSENT: Array(12).fill(0), LATE: Array(12).fill(0) };
+            attendanceData.results.forEach(att => {
+                const date = new Date(att.date);
+                const month = date.toLocaleString('default', { month: 'short', year: 'numeric' });
+                const index = months.indexOf(month);
+                if (index !== -1) {
+                    attendanceCounts[att.status][index]++;
+                }
+            });
+
+            return { deptCounts, attendanceCounts, months };
+        }
+
+        // Render charts
+        async function renderCharts() {
+            const { deptData, attendanceData } = await fetchData();
+            const { deptCounts, attendanceCounts, months } = processData(deptData, attendanceData);
+
+            // Pie Chart: Employees per Department
+            new Chart(document.getElementById('deptChart'), {
+                type: 'pie',
+                data: {
+                    labels: Object.keys(deptCounts),
+                    datasets: [{
+                        data: Object.values(deptCounts),
+                        backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF']
+                    }]
+                },
+                options: {
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Employees per Department'
+                        }
+                    }
+                }
+            });
+
+            // Bar Chart: Monthly Attendance
+            new Chart(document.getElementById('attendanceChart'), {
+                type: 'bar',
+                data: {
+                    labels: months,
+                    datasets: [
+                        {
+                            label: 'Present',
+                            data: attendanceCounts.PRESENT,
+                            backgroundColor: '#36A2EB'
+                        },
+                        {
+                            label: 'Absent',
+                            data: attendanceCounts.ABSENT,
+                            backgroundColor: '#FF6384'
+                        },
+                        {
+                            label: 'Late',
+                            data: attendanceCounts.LATE,
+                            backgroundColor: '#FFCE56'
+                        }
+                    ]
+                },
+                options: {
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Monthly Attendance Overview'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        // Token handling
+        if (!localStorage.getItem('access_token')) {
+            window.location.href = '/admin/login/';
+        } else {
+            renderCharts();
+        }
+    </script>
+</body>
+</html>
